@@ -10,7 +10,51 @@
 ![Build](https://img.shields.io/badge/Build-passing-brightgreen?style=for-the-badge)
 ![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
 
----
+------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+
+Installation
+bash
+git clone https://github.com/Neel2355/Document-Intake-Assistant
+cd Document-Intake-Assistant
+npm install
+Configuration
+
+No configuration is required. Without an API key, the app uses its built-in simulation engine. It asks follow-up questions for missing fields, handles corrections, detects ambiguity, and deflects off-topic input.
+
+To use a real LLM, create a .env.local file in the project root and add one key:
+
+env
+OPENAI_API_KEY=your_openai_key
+# or
+GEMINI_API_KEY=your_gemini_key
+
+Restart the server after changing environment variables.
+-----------------------------------------------------------------------------------------
+
+Running the app
+
+Development:
+
+bash
+npm run dev
+-----------------------------------------------------------------------------------------
+
+Open http://localhost:3000.
+------------------------------------------------------------------------------------------
+
+Production:
+
+bash
+npm run build
+npm start
+Running tests
+bash
+node --experimental-strip-types --test src/tests/intake.test.ts
+----------------------------------------------------------------------------------------------------------
+
+Linting
+bash
+npm run lint
 
 ## What This Is
 
