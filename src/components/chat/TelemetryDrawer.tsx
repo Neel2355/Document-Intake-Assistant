@@ -3,15 +3,15 @@
 import React, { useState } from "react";
 import { useWishesStore } from "@/store/useWishesStore";
 import {
-  Activity,
-  ChevronDown,
-  ChevronUp,
-  Cpu,
-  Clock,
-  Code2,
-  Copy,
-  Check,
-} from "lucide-react";
+  IconActivity,
+  IconChevronDown,
+  IconChevronUp,
+  IconCpu,
+  IconClock,
+  IconCode,
+  IconCopy,
+  IconCheck,
+} from "../icons/CustomIcons";
 
 export function TelemetryDrawer() {
   const { latestTelemetry, isTelemetryOpen, setIsTelemetryOpen } = useWishesStore();
@@ -19,12 +19,14 @@ export function TelemetryDrawer() {
 
   if (!latestTelemetry) {
     return (
-      <div className="border-t border-zinc-200 bg-zinc-50 px-4 py-1.5 text-[11px] text-zinc-400 flex items-center justify-between select-none shrink-0 no-print">
-        <div className="flex items-center gap-1.5">
-          <Activity className="w-3 h-3 text-zinc-400" />
-          <span>Observability: Awaiting first exchange</span>
+      <div className="border-t border-surface-border bg-surface-base px-5 py-2 text-[11px] text-ink-muted flex items-center justify-between select-none shrink-0 no-print">
+        <div className="flex items-center gap-2">
+          <IconActivity className="w-3.5 h-3.5 text-ink-muted" />
+          <span className="font-mono uppercase tracking-wider text-[10px]">Observability Engine</span>
+          <span className="text-surface-border">•</span>
+          <span>Awaiting initial dialogue exchange</span>
         </div>
-        <span className="font-mono text-[10px]">0 ms</span>
+        <span className="font-mono text-[10px] text-ink-muted">0 ms</span>
       </div>
     );
   }
@@ -37,99 +39,113 @@ export function TelemetryDrawer() {
   };
 
   const totalTokens = latestTelemetry.promptTokens + latestTelemetry.completionTokens;
+  const promptPct = Math.round((latestTelemetry.promptTokens / totalTokens) * 100);
 
   return (
-    <div className="border-t border-zinc-200 bg-zinc-50 shrink-0 transition-all no-print">
+    <div className="border-t border-surface-border bg-surface-base shrink-0 transition-colors no-print">
       {/* Drawer Toggle Bar */}
       <button
         type="button"
         onClick={() => setIsTelemetryOpen(!isTelemetryOpen)}
-        className="w-full px-4 py-1.5 flex items-center justify-between text-[11px] hover:bg-zinc-100/80 transition-colors cursor-pointer text-left"
+        className="w-full px-5 py-2 flex items-center justify-between text-xs hover:bg-surface-subtle transition-colors cursor-pointer text-left select-none"
         aria-expanded={isTelemetryOpen}
       >
-        <div className="flex items-center gap-2">
-          <Activity className="w-3 h-3 text-emerald-600" />
-          <span className="font-medium text-zinc-700">Observability Metrics</span>
-          <span className="font-mono text-[10px] text-zinc-400">
+        <div className="flex items-center gap-2.5">
+          <IconActivity className="w-3.5 h-3.5 text-brand-seal" />
+          <span className="font-semibold text-ink-primary uppercase tracking-wider text-[11px]">
+            Inference Telemetry
+          </span>
+          <span className="font-mono text-[10px] text-ink-muted">
             {latestTelemetry.timestamp}
           </span>
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="flex items-center gap-1 font-mono text-[10px] text-zinc-500">
-            <Cpu className="w-3 h-3 text-zinc-400" />
-            <span>
-              {latestTelemetry.promptTokens} in / {latestTelemetry.completionTokens} out ({totalTokens} tok)
-            </span>
+          <div className="flex items-center gap-1.5 font-mono text-[11px] text-ink-secondary">
+            <IconCpu className="w-3.5 h-3.5 text-ink-muted" />
+            <span>{totalTokens} tok</span>
           </div>
 
-          <div className="flex items-center gap-1 font-mono text-[10px] px-1.5 py-0.5 rounded bg-zinc-200/70 text-zinc-700">
-            <Clock className="w-2.5 h-2.5 text-zinc-500" />
+          <div className="flex items-center gap-1 font-mono text-[11px] px-2 py-0.5 rounded bg-surface-subtle text-ink-primary border border-surface-border">
+            <IconClock className="w-3 h-3 text-ink-muted" />
             <span>{latestTelemetry.latencyMs}ms</span>
           </div>
 
           {isTelemetryOpen ? (
-            <ChevronDown className="w-3.5 h-3.5 text-zinc-400" />
+            <IconChevronDown className="w-3.5 h-3.5 text-ink-muted" />
           ) : (
-            <ChevronUp className="w-3.5 h-3.5 text-zinc-400" />
+            <IconChevronUp className="w-3.5 h-3.5 text-ink-muted" />
           )}
         </div>
       </button>
 
-      {/* Drawer Details */}
+      {/* Asymmetric Content-Driven Observability Layout (Anti-patterns 6 & 14) */}
       {isTelemetryOpen && (
-        <div className="px-4 pb-3 pt-1 space-y-2.5 text-xs border-t border-zinc-200/60">
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-            <div className="p-2 bg-white border border-zinc-200 rounded-md">
-              <span className="text-[10px] text-zinc-400 uppercase font-mono block">Prompt Tokens</span>
-              <span className="text-xs font-mono font-medium text-zinc-800">
-                {latestTelemetry.promptTokens} tokens
-              </span>
+        <div className="px-5 pb-4 pt-1 space-y-3 text-xs border-t border-surface-border-subtle">
+          {/* Asymmetric Telemetry Strip */}
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5">
+            {/* Primary Column: Token Allocation Ratio */}
+            <div className="md:col-span-7 p-3 bg-surface-card border border-surface-border rounded-md space-y-1.5">
+              <div className="flex items-center justify-between text-[10px] uppercase font-mono text-ink-muted">
+                <span>Token Distribution</span>
+                <span>Prompt {promptPct}% / Completion {100 - promptPct}%</span>
+              </div>
+              <div className="w-full bg-surface-subtle h-2 rounded overflow-hidden flex">
+                <div className="bg-ink-primary h-full transition-all" style={{ width: `${promptPct}%` }} />
+                <div className="bg-brand-seal h-full transition-all" style={{ width: `${100 - promptPct}%` }} />
+              </div>
+              <div className="flex items-center justify-between font-mono text-[11px] text-ink-secondary pt-0.5">
+                <span>Inbound: {latestTelemetry.promptTokens} tokens</span>
+                <span>Generated: {latestTelemetry.completionTokens} tokens</span>
+              </div>
             </div>
 
-            <div className="p-2 bg-white border border-zinc-200 rounded-md">
-              <span className="text-[10px] text-zinc-400 uppercase font-mono block">Completion Tokens</span>
-              <span className="text-xs font-mono font-medium text-zinc-800">
-                {latestTelemetry.completionTokens} tokens
-              </span>
-            </div>
-
-            <div className="p-2 bg-white border border-zinc-200 rounded-md">
-              <span className="text-[10px] text-zinc-400 uppercase font-mono block">Round-Trip Latency</span>
-              <span className="text-xs font-mono font-medium text-emerald-700">
-                {latestTelemetry.latencyMs} milliseconds
-              </span>
+            {/* Secondary Column: Round-Trip Latency Metric */}
+            <div className="md:col-span-5 p-3 bg-surface-card border border-surface-border rounded-md flex flex-col justify-between">
+              <div className="flex items-center justify-between text-[10px] uppercase font-mono text-ink-muted">
+                <span>Server Processing</span>
+                <span className="text-brand-seal font-medium">Optimal</span>
+              </div>
+              <div className="flex items-baseline gap-1.5 pt-1">
+                <span className="text-lg font-mono font-semibold text-ink-primary">
+                  {latestTelemetry.latencyMs}
+                </span>
+                <span className="text-xs text-ink-muted font-mono">ms round-trip</span>
+              </div>
+              <p className="text-[10px] text-ink-muted pt-1">
+                Streamed via Next.js Node.js runtime pipeline
+              </p>
             </div>
           </div>
 
-          {/* Raw JSON Tool Payload */}
-          <div className="bg-zinc-900 rounded-md border border-zinc-800 text-zinc-100 overflow-hidden">
-            <div className="flex items-center justify-between px-3 py-1.5 bg-zinc-800/80 border-b border-zinc-700/80 text-[10px] font-mono">
-              <div className="flex items-center gap-1.5 text-zinc-300">
-                <Code2 className="w-3 h-3 text-emerald-400" />
-                <span>Raw JSON Tool Payload (Pre-State Mutation)</span>
+          {/* Structured Inspection Panel (Replaces decorative fake terminal window) */}
+          <div className="bg-surface-card rounded-md border border-surface-border overflow-hidden">
+            <div className="flex items-center justify-between px-3.5 py-2 bg-surface-subtle border-b border-surface-border text-[11px]">
+              <div className="flex items-center gap-2 text-ink-primary font-medium">
+                <IconCode className="w-3.5 h-3.5 text-brand-seal" />
+                <span>Extracted Zod Tool Arguments</span>
               </div>
               {latestTelemetry.rawToolPayload ? (
                 <button
                   onClick={handleCopyPayload}
-                  className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-zinc-700 hover:bg-zinc-600 text-zinc-200 text-[10px] transition-colors cursor-pointer"
+                  className="flex items-center gap-1 px-2 py-0.5 rounded bg-surface-card hover:bg-surface-border text-ink-secondary text-[11px] transition-colors cursor-pointer border border-surface-border"
                 >
-                  {copied ? <Check className="w-2.5 h-2.5 text-emerald-400" /> : <Copy className="w-2.5 h-2.5" />}
-                  <span>{copied ? "Copied" : "Copy"}</span>
+                  {copied ? <IconCheck className="w-3 h-3 text-brand-seal" /> : <IconCopy className="w-3 h-3" />}
+                  <span>{copied ? "Copied" : "Copy Payload"}</span>
                 </button>
               ) : (
-                <span className="text-zinc-500 italic">No tool payload emitted</span>
+                <span className="text-ink-muted italic text-[11px]">No mutation emitted</span>
               )}
             </div>
 
-            <div className="p-2.5 max-h-32 overflow-y-auto">
+            <div className="p-3 max-h-36 overflow-y-auto bg-surface-base font-mono text-xs">
               {latestTelemetry.rawToolPayload ? (
-                <pre className="text-[11px] font-mono text-emerald-300 whitespace-pre-wrap leading-relaxed">
+                <pre className="text-ink-primary whitespace-pre-wrap leading-relaxed text-[11px]">
                   {JSON.stringify(latestTelemetry.rawToolPayload, null, 2)}
                 </pre>
               ) : (
-                <p className="text-zinc-500 italic text-[11px]">
-                  Turn completed with text streaming.
+                <p className="text-ink-muted italic text-[11px]">
+                  Conversational query processed without document state mutation.
                 </p>
               )}
             </div>

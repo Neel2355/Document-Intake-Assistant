@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { Clock } from "lucide-react";
+import { IconClock } from "../icons/CustomIcons";
 
 interface WaitingPlaceholderProps {
   label?: string;
@@ -9,27 +9,27 @@ interface WaitingPlaceholderProps {
 }
 
 /**
- * Visual indicator rendering the exact required text:
- * "Waiting for input..." styled in a sleek, muted gray state.
+ * Visual indicator rendering the exact required legal specification text:
+ * "Waiting for input..." styled in an architectural, restrained state.
  */
 export function WaitingPlaceholder({ label, inline = false }: WaitingPlaceholderProps) {
   if (inline) {
     return (
       <span
-        className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-xs font-medium bg-zinc-100 text-zinc-400 border border-zinc-200/80 italic select-none"
-        title={label ? `Waiting for ${label}` : "Waiting for input..."}
+        className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded text-xs font-mono bg-surface-subtle text-ink-muted border border-surface-border select-none"
+        title={label ? `Awaiting ${label}` : "Waiting for input..."}
       >
-        <Clock className="w-3 h-3 text-zinc-400 animate-pulse" />
-        Waiting for input...
+        <IconClock className="w-3 h-3 text-ink-muted" />
+        <span>Waiting for input...</span>
       </span>
     );
   }
 
   return (
-    <div className="flex items-center gap-2 p-2.5 rounded-lg border border-dashed border-zinc-300 bg-zinc-50/70 text-zinc-400 italic text-sm select-none transition-all">
-      <Clock className="w-4 h-4 text-zinc-400 shrink-0 animate-pulse" />
+    <div className="flex items-center gap-2.5 p-3 rounded-md border border-dashed border-surface-border bg-surface-base text-ink-muted text-xs font-mono select-none">
+      <IconClock className="w-3.5 h-3.5 text-ink-muted shrink-0" />
       <span>Waiting for input...</span>
-      {label && <span className="text-xs text-zinc-400 not-italic ml-auto font-sans">({label})</span>}
+      {label && <span className="text-[11px] text-ink-faint ml-auto font-sans">({label})</span>}
     </div>
   );
 }

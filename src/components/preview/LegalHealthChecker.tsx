@@ -3,16 +3,17 @@
 import React, { useMemo } from "react";
 import { useWishesStore } from "@/store/useWishesStore";
 import {
-  CheckCircle2,
-  AlertCircle,
-  HelpCircle,
-  Shield,
-  FileCheck2,
-} from "lucide-react";
+  IconCheckCircle,
+  IconAlertTriangle,
+  IconHelpCircle,
+  IconCheckShield,
+  IconDeed,
+} from "../icons/CustomIcons";
 
 interface AuditRule {
   id: string;
   category: "Notice" | "Recommendation" | "Verified";
+  statute: string;
   title: string;
   description: string;
   status: "pass" | "warn" | "info";
@@ -29,16 +30,18 @@ export function LegalHealthChecker() {
       rules.push({
         id: "testator_id",
         category: "Verified",
-        title: "Testator Legal Identity Established",
-        description: `Principal identified as ${wishes.full_name}, residing in domicile jurisdiction.`,
+        statute: "UPC § 2-502(a)",
+        title: "Principal Testator Identity Established",
+        description: `Testator identified as ${wishes.full_name}, residing in declared domicile jurisdiction.`,
         status: "pass",
       });
     } else {
       rules.push({
         id: "testator_id",
         category: "Recommendation",
-        title: "Principal Testator Incomplete",
-        description: "Legal full name and residential domicile must be completed to establish probate jurisdiction.",
+        statute: "UPC § 2-501",
+        title: "Testator Legal Identity Incomplete",
+        description: "Full legal name and residential domicile are required to establish probate venue and capacity.",
         status: "warn",
       });
     }
@@ -48,7 +51,8 @@ export function LegalHealthChecker() {
       rules.push({
         id: "scope_worldwide",
         category: "Notice",
-        title: "Cross-Border Asset Clause Active",
+        statute: "Hague Convention (1961)",
+        title: "Cross-Border International Asset Scope Active",
         description:
           "Worldwide coverage elected. Ensure foreign real property complies with international will standards or local situs rules.",
         status: "info",
@@ -57,7 +61,8 @@ export function LegalHealthChecker() {
       rules.push({
         id: "scope_domestic",
         category: "Verified",
-        title: "Domestic Assets Scope Declared",
+        statute: "Restatement (3d) of Property",
+        title: "Domestic Property Scope Declared",
         description: "Declaration is strictly limited to domestic jurisdiction property.",
         status: "pass",
       });
@@ -65,6 +70,7 @@ export function LegalHealthChecker() {
       rules.push({
         id: "scope_pending",
         category: "Recommendation",
+        statute: "Uniform Probate Code § 1-301",
         title: "Territorial Scope Unspecified",
         description: "Specify whether property disposition covers international or domestic assets.",
         status: "warn",
@@ -77,16 +83,18 @@ export function LegalHealthChecker() {
         rules.push({
           id: "executor_clear",
           category: "Verified",
+          statute: "UPC § 3-203",
           title: "Personal Representative Designated",
-          description: `${wishes.executor.name} appointed with clear relationship (${wishes.executor.relationship}).`,
+          description: `${wishes.executor.name} nominated with fiduciary relationship (${wishes.executor.relationship}).`,
           status: "pass",
         });
       } else {
         rules.push({
           id: "executor_warn",
           category: "Recommendation",
+          statute: "UPC § 3-203(a)(1)",
           title: "Executor Relationship Ambiguous",
-          description: "Clarify whether the executor is an attorney, family member, spouse, or institutional trust.",
+          description: "Clarify whether the executor is an attorney, family member, spouse, or institutional trust fiduciary.",
           status: "warn",
         });
       }
@@ -94,103 +102,146 @@ export function LegalHealthChecker() {
       rules.push({
         id: "executor_pending",
         category: "Recommendation",
-        title: "No Executor Appointed",
+        statute: "UPC § 3-203(f)",
+        title: "No Personal Representative Nominated",
         description: "Without an appointed executor, probate court must assign an administrator by default.",
         status: "warn",
       });
     }
 
-    // 4. Descendants & Lineage
-    if (wishes.children) {
-      if (wishes.children.length > 0) {
-        rules.push({
-          id: "children_declared",
-          category: "Verified",
-          title: "Lineage & Children Enumerated",
-          description: `${wishes.children.length} child/children explicitly named, reducing pretermitted heir disputes.`,
-          status: "pass",
-        });
-      } else {
-        rules.push({
-          id: "children_none",
-          category: "Verified",
-          title: "No Children Declaration Recorded",
-          description: "Express statement that the testator has no surviving children on record.",
-          status: "pass",
-        });
-      }
+    // 4. Beneficiary / Lineage Declaration
+    if (wishes.children && wishes.children.length > 0) {
+      rules.push({
+        id: "children_declared",
+        category: "Verified",
+        statute: "UPC § 2-302",
+        title: "Descendants Formally Declared",
+        description: `${wishes.children.length} descendant(s) declared, eliminating pretermitted heir disputes.`,
+        status: "pass",
+      });
+    } else if (wishes.children !== null) {
+      rules.push({
+        id: "children_none",
+        category: "Verified",
+        statute: "Restatement of Wills § 9.2",
+        title: "Zero Descendants Explicitly Noted",
+        description: "Explicit notation of having no living descendants protects against statutory omission claims.",
+        status: "pass",
+      });
     } else {
       rules.push({
         id: "children_pending",
         category: "Recommendation",
-        title: "Children Status Pending",
-        description: "Record child names or declare none to avoid statutory omission presumptions.",
+        statute: "UPC § 2-302",
+        title: "Lineage Declaration Unspecified",
+        description: "State whether you have living children to prevent pretermitted child statutory challenges.",
         status: "warn",
       });
     }
 
-    // 5. Specific Bequests Audit
+    // 5. Bequests & Specific Devises
     if (wishes.specific_gifts && wishes.specific_gifts.length > 0) {
       rules.push({
-        id: "bequests_recorded",
+        id: "gifts_declared",
         category: "Verified",
-        title: "Specific Bequests Documented",
-        description: `${wishes.specific_gifts.length} sentimental or specific item(s) designated.`,
+        statute: "UPC § 2-606",
+        title: "Specific Devises Documented",
+        description: `${wishes.specific_gifts.length} specific bequest(s) scheduled for delivery.`,
         status: "pass",
+      });
+    } else {
+      rules.push({
+        id: "gifts_none",
+        category: "Notice",
+        statute: "UPC § 2-601",
+        title: "No Specific Bequests Scheduled",
+        description: "Personal property not explicitly devised passes under general residuary estate clauses.",
+        status: "info",
       });
     }
 
     return rules;
   }, [wishes]);
 
-  const passedCount = auditRules.filter((r) => r.status === "pass").length;
+  const passCount = auditRules.filter((r) => r.status === "pass").length;
+  const warnCount = auditRules.filter((r) => r.status === "warn").length;
+  const infoCount = auditRules.filter((r) => r.status === "info").length;
 
   return (
-    <div className="bg-white border border-zinc-200 rounded-xl p-5 space-y-4 shadow-xs">
-      <div className="flex items-center justify-between border-b border-zinc-100 pb-3">
-        <div className="flex items-center gap-2">
-          <Shield className="w-4 h-4 text-emerald-700" />
-          <h3 className="text-sm font-semibold text-zinc-900">Pre-Flight Legal Health Audit</h3>
+    <div className="bg-surface-card border border-surface-border rounded-md p-5 space-y-4 select-none">
+      {/* Header and Compliance Matrix */}
+      <div className="flex items-center justify-between border-b border-surface-border pb-3.5">
+        <div className="flex items-center gap-2.5">
+          <IconDeed className="w-4 h-4 text-brand-seal" />
+          <div>
+            <h3 className="text-xs font-semibold text-ink-primary uppercase tracking-wider">
+              Statutory Pre-Flight Health Audit
+            </h3>
+            <p className="text-[11px] text-ink-muted">Automated compliance checks under Uniform Probate Code</p>
+          </div>
         </div>
-        <div className="flex items-center gap-2">
-          <FileCheck2 className="w-3.5 h-3.5 text-zinc-500" />
-          <span className="text-xs text-zinc-600 font-mono font-medium">
-            {passedCount} of {auditRules.length} Checks Passed
+
+        <div className="flex items-center gap-1.5 font-mono text-[11px]">
+          <span className="px-2 py-0.5 rounded bg-brand-seal-tint text-brand-seal border border-brand-seal-border">
+            {passCount} Verified
+          </span>
+          {warnCount > 0 && (
+            <span className="px-2 py-0.5 rounded bg-surface-subtle text-amber-800 border border-surface-border">
+              {warnCount} Pending
+            </span>
+          )}
+          <span className="px-2 py-0.5 rounded bg-surface-subtle text-ink-muted border border-surface-border">
+            {infoCount} Notices
           </span>
         </div>
       </div>
 
-      <p className="text-xs text-zinc-500 leading-relaxed">
-        Automated preliminary audit evaluating clause ambiguity, jurisdiction alignment, and standard
-        testamentary best practices.
-      </p>
-
+      {/* Rules List (Anti-pattern 11: No accent left borders, fully enclosed cards) */}
       <div className="space-y-2.5">
-        {auditRules.map((rule) => (
-          <div
-            key={rule.id}
-            className={`p-3 rounded-lg border text-xs space-y-1 transition-colors ${
-              rule.status === "pass"
-                ? "bg-zinc-50/70 border-zinc-200/80 text-zinc-800"
-                : rule.status === "warn"
-                ? "bg-amber-50/70 border-amber-200/80 text-amber-900"
-                : "bg-blue-50/60 border-blue-200/80 text-blue-900"
-            }`}
-          >
-            <div className="flex items-center justify-between font-medium">
-              <div className="flex items-center gap-2">
-                {rule.status === "pass" && <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />}
-                {rule.status === "warn" && <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />}
-                {rule.status === "info" && <HelpCircle className="w-4 h-4 text-blue-600 shrink-0" />}
-                <span>{rule.title}</span>
+        {auditRules.map((rule) => {
+          return (
+            <div
+              key={rule.id}
+              className="p-3.5 rounded-md border border-surface-border bg-surface-base text-xs space-y-1.5"
+            >
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  {rule.status === "pass" && (
+                    <IconCheckCircle className="w-3.5 h-3.5 text-brand-seal shrink-0" />
+                  )}
+                  {rule.status === "warn" && (
+                    <IconAlertTriangle className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                  )}
+                  {rule.status === "info" && (
+                    <IconHelpCircle className="w-3.5 h-3.5 text-ink-muted shrink-0" />
+                  )}
+                  <span className="font-semibold text-ink-primary">{rule.title}</span>
+                </div>
+
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-mono text-ink-muted">
+                    {rule.statute}
+                  </span>
+                  <span
+                    className={`text-[9px] uppercase font-mono px-1.5 py-0.2 rounded border ${
+                      rule.status === "pass"
+                        ? "bg-brand-seal-tint text-brand-seal border-brand-seal-border"
+                        : rule.status === "warn"
+                        ? "bg-surface-subtle text-amber-800 border-surface-border"
+                        : "bg-surface-subtle text-ink-muted border-surface-border"
+                    }`}
+                  >
+                    {rule.category}
+                  </span>
+                </div>
               </div>
-              <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-white/80 border border-current">
-                {rule.category}
-              </span>
+
+              <p className="text-[11px] text-ink-secondary leading-relaxed pl-5.5">
+                {rule.description}
+              </p>
             </div>
-            <p className="text-[11px] opacity-90 pl-6 leading-relaxed">{rule.description}</p>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );

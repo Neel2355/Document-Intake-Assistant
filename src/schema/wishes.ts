@@ -17,19 +17,21 @@ export const ExecutorSchema = z.object({
 
 /**
  * Strict Zod schema for the PersonalWishes document.
- * All fields are explicitly nullable by default as per specification:
- * - full_name (string)
- * - home_address (string)
- * - covers_worldwide_assets (boolean)
- * - children (array of objects with name)
- * - executor (object with name, relationship)
- * - specific_gifts (array of strings)
- * - additional_wishes (string)
+ * Aligned with the Wenup Document Intake Assistant Technical Specification:
+ * - full_name (string | null)
+ * - home_address (string | null)
+ * - covers_worldwide_assets (boolean | null)
+ * - has_children (boolean | null)
+ * - children (array of objects with name | null)
+ * - executor (object with name, relationship | null)
+ * - specific_gifts (array of strings | null)
+ * - additional_wishes (string | null)
  */
 export const PersonalWishesSchema = z.object({
   full_name: z.string().nullable().default(null),
   home_address: z.string().nullable().default(null),
   covers_worldwide_assets: z.boolean().nullable().default(null),
+  has_children: z.boolean().nullable().default(null),
   children: z.array(ChildSchema).nullable().default(null),
   executor: ExecutorSchema.nullable().default(null),
   specific_gifts: z.array(z.string().min(1, "Gift description cannot be empty")).nullable().default(null),
@@ -44,6 +46,7 @@ export const UpdateDocumentStateSchema = z.object({
   full_name: z.string().nullable().optional(),
   home_address: z.string().nullable().optional(),
   covers_worldwide_assets: z.boolean().nullable().optional(),
+  has_children: z.boolean().nullable().optional(),
   children: z.array(ChildSchema).nullable().optional(),
   executor: ExecutorSchema.nullable().optional(),
   specific_gifts: z.array(z.string().min(1, "Gift description cannot be empty")).nullable().optional(),
@@ -79,6 +82,10 @@ export const UPDATE_DOCUMENT_STATE_TOOL = {
           type: ["boolean", "null"],
           description: "True if covering worldwide assets; false if strictly domestic.",
         },
+        has_children: {
+          type: ["boolean", "null"],
+          description: "True if the user has children; false if the user has no children; null if unconfirmed.",
+        },
         children: {
           type: ["array", "null"],
           description: "Array of child objects with 'name' property, or null if no children.",
@@ -95,7 +102,7 @@ export const UPDATE_DOCUMENT_STATE_TOOL = {
           description: "Designated executor / personal representative, or null.",
           properties: {
             name: { type: "string", description: "Full name of the executor" },
-            relationship: { type: "string", description: "Relationship or role (e.g. Sibling, Attorney)" },
+            relationship: { type: "string", description: "Relationship or role (e.g. brother, attorney)" },
           },
           required: ["name", "relationship"],
         },
@@ -121,6 +128,7 @@ export const DEFAULT_PERSONAL_WISHES: PersonalWishes = {
   full_name: null,
   home_address: null,
   covers_worldwide_assets: null,
+  has_children: null,
   children: null,
   executor: null,
   specific_gifts: null,
@@ -128,24 +136,24 @@ export const DEFAULT_PERSONAL_WISHES: PersonalWishes = {
 };
 
 /**
- * Staff UX sample preset to demonstrate a completely filled legal wishes document.
+ * Wenup test sample preset matching the specification slides.
  */
 export const SAMPLE_PERSONAL_WISHES: PersonalWishes = {
-  full_name: "Eleanor Vance-Sterling",
-  home_address: "742 Evergreen Terrace, Suite 400, Seattle, WA 98101",
+  full_name: "Jane Smith",
+  home_address: "14 Belgrave Square, London SW1X 8PS, United Kingdom",
   covers_worldwide_assets: true,
+  has_children: true,
   children: [
-    { name: "Julian Sterling" },
-    { name: "Clara Vance-Sterling" },
+    { name: "Julian Smith" },
+    { name: "Clara Smith" },
   ],
   executor: {
-    name: "Marcus Aurelius Sterling",
-    relationship: "Brother & Trusted Family Attorney",
+    name: "James Smith",
+    relationship: "brother",
   },
   specific_gifts: [
-    "1968 Vintage Omega Seamaster watch to Julian Sterling",
-    "Grand piano and sheet music archives to Clara Vance-Sterling",
-    "Rare first-edition book collection to the Seattle Public Library Foundation",
+    "Vintage pocket watch to brother James Smith",
+    "Family art collection to Julian and Clara Smith",
   ],
-  additional_wishes: "I request a modest celebration of life at the Puget Sound botanical conservatory. Any domestic pets under my care should be placed with Clara, accompanied by a $10,000 stipend for veterinary expenses. Please ensure digital photography archives are backed up to cold storage.",
+  additional_wishes: "I request a modest private memorial service. All digital files and photographs should be transferred to my brother James.",
 };

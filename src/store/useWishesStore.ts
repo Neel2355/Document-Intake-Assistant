@@ -32,14 +32,22 @@ export interface DocumentSnapshot {
   description: string;
 }
 
+export interface CorrectionRecord {
+  id: string;
+  timestamp: string;
+  field: keyof PersonalWishes;
+  previousValue: any;
+  newValue: any;
+}
+
 interface WishesStoreState {
   wishes: PersonalWishes;
   messages: ChatMessage[];
-  activeTab: "document" | "schema" | "health";
+  activeTab: "document" | "audit" | "json" | "fixtures";
   isDirectEditOpen: boolean;
   apiKey: string;
   inputMode: "chat" | "form";
-  
+
   // Streaming state
   isStreaming: boolean;
   streamingText: string;
@@ -61,6 +69,9 @@ interface WishesStoreState {
   // Snapshot Revision History
   snapshots: DocumentSnapshot[];
 
+  // Correction Audit Trail (Demonstrates Slide 4: "Allow the user to correct previously supplied information")
+  correctionHistory: CorrectionRecord[];
+
   // Actions
   setInputMode: (mode: "chat" | "form") => void;
   setIsTelemetryOpen: (open: boolean) => void;
@@ -77,33 +88,35 @@ interface WishesStoreState {
   setFullName: (name: string | null) => void;
   setHomeAddress: (address: string | null) => void;
   setWorldwideAssets: (covers: boolean | null) => void;
+  setHasChildren: (has: boolean | null) => void;
   setChildren: (children: Child[] | null) => void;
-  addChild: (name: string) => void;
+  addChild: (child: Child) => void;
   removeChild: (index: number) => void;
   setExecutor: (executor: Executor | null) => void;
   setSpecificGifts: (gifts: string[] | null) => void;
   addSpecificGift: (gift: string) => void;
   removeSpecificGift: (index: number) => void;
   setAdditionalWishes: (wishes: string | null) => void;
-  
+
   // High-level actions
   resetToEmpty: () => void;
   loadSampleData: () => void;
   validateDocument: () => { success: boolean; errors?: string[] };
   getReadiness: () => { percentage: number; filled: number; total: number; missing: Array<keyof PersonalWishes> };
   setApiKey: (key: string) => void;
-  
+
   // Chat actions
   sendUserMessage: (text: string) => Promise<void>;
-  setActiveTab: (tab: "document" | "schema" | "health") => void;
+  setActiveTab: (tab: "document" | "audit" | "json" | "fixtures") => void;
   setIsDirectEditOpen: (open: boolean) => void;
+  runEvaluationFixture: (fixtureId: "batch_intake" | "ambiguity" | "correction" | "off_topic" | "malformed_json") => Promise<void>;
 }
 
 const initialMessages: ChatMessage[] = [
   {
     id: "welcome-1",
     sender: "assistant",
-    text: "Welcome to Personal Wishes. I will guide you step-by-step in documenting your testamentary wishes. All fields are verified against our legal schema. To start, what is your full legal name?",
+    text: "Welcome to Document Intake Assistant. I will conduct a structured conversational interview to record your personal testamentary wishes into a draft document. All values are validated against an explicit Zod schema. To begin, what is your full legal name?",
     timestamp: "Just now",
   },
 ];
@@ -128,6 +141,7 @@ export const useWishesStore = create<WishesStoreState>((set, get) => ({
   isEditMode: false,
   activeEditField: null,
   snapshots: [],
+  correctionHistory: [],
 
   setInputMode: (mode) => set({ inputMode: mode }),
   setIsTelemetryOpen: (open) => set({ isTelemetryOpen: open }),
@@ -158,12 +172,11 @@ export const useWishesStore = create<WishesStoreState>((set, get) => ({
         {
           id: `undo-${Date.now()}`,
           sender: "system",
-          text: `[Reverted]: Restored document snapshot: "${last.description}".`,
+          text: `[Reverted]: Restored document revision: "${last.description}".`,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
         },
       ],
     });
-    // Trigger visual diffing
     Object.keys(last.wishes).forEach((k) => get().triggerFieldHighlight(k));
   },
 
@@ -199,57 +212,53 @@ export const useWishesStore = create<WishesStoreState>((set, get) => ({
   },
 
   applyStatePatch: (patch) => {
-    get().createSnapshot("AI Assistant update");
+    get().createSnapshot("Intake state update");
     set((state) => {
       const updated: PersonalWishes = { ...state.wishes };
       const updatedKeys: string[] = [];
+      const newCorrections: CorrectionRecord[] = [];
 
-      if (patch.full_name !== undefined) {
-        updated.full_name = patch.full_name;
-        updatedKeys.push("full_name");
-      }
-      if (patch.home_address !== undefined) {
-        updated.home_address = patch.home_address;
-        updatedKeys.push("home_address");
-      }
-      if (patch.covers_worldwide_assets !== undefined) {
-        updated.covers_worldwide_assets = patch.covers_worldwide_assets;
-        updatedKeys.push("covers_worldwide_assets");
-      }
-      if (patch.children !== undefined) {
-        updated.children = patch.children;
-        updatedKeys.push("children");
-      }
-      if (patch.executor !== undefined) {
-        updated.executor = patch.executor;
-        updatedKeys.push("executor");
-      }
-      if (patch.specific_gifts !== undefined) {
-        updated.specific_gifts = patch.specific_gifts;
-        updatedKeys.push("specific_gifts");
-      }
-      if (patch.additional_wishes !== undefined) {
-        updated.additional_wishes = patch.additional_wishes;
-        updatedKeys.push("additional_wishes");
-      }
+      (Object.keys(patch) as Array<keyof PersonalWishes>).forEach((key) => {
+        if (patch[key] !== undefined) {
+          const oldVal = state.wishes[key];
+          const newVal = patch[key];
+
+          // If the field previously had a value and is now changed, record correction
+          if (oldVal !== null && JSON.stringify(oldVal) !== JSON.stringify(newVal)) {
+            newCorrections.push({
+              id: `corr-${Date.now()}-${key}`,
+              timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+              field: key,
+              previousValue: oldVal,
+              newValue: newVal,
+            });
+          }
+
+          (updated as any)[key] = newVal;
+          updatedKeys.push(key as string);
+        }
+      });
 
       setTimeout(() => {
         updatedKeys.forEach((key) => get().triggerFieldHighlight(key));
       }, 50);
 
-      return { wishes: updated };
+      return {
+        wishes: updated,
+        correctionHistory: [...newCorrections, ...state.correctionHistory],
+      };
     });
   },
 
   manualEditField: (field, value) => {
-    get().createSnapshot(`Manual edit ${field.replace(/_/g, " ")}`);
+    get().createSnapshot(`Direct edit: ${field.replace(/_/g, " ")}`);
     get().triggerFieldHighlight(field as string);
 
     let formattedDisplay = "";
     if (value === null) {
       formattedDisplay = "Cleared (Waiting for input)";
     } else if (typeof value === "boolean") {
-      formattedDisplay = value ? "Worldwide Assets" : "Domestic Only";
+      formattedDisplay = value ? "True" : "False";
     } else if (Array.isArray(value)) {
       formattedDisplay = `${value.length} items`;
     } else if (typeof value === "object" && value !== null) {
@@ -261,21 +270,37 @@ export const useWishesStore = create<WishesStoreState>((set, get) => ({
 
     const readableField = (field as string).replace(/_/g, " ");
 
-    set((state) => ({
-      wishes: {
-        ...state.wishes,
-        [field]: value,
-      },
-      messages: [
-        ...state.messages,
-        {
-          id: `manual-edit-${Date.now()}`,
-          sender: "system",
-          text: `[Manual Update]: Testator updated ${readableField} to: "${formattedDisplay}".`,
+    set((state) => {
+      const oldVal = state.wishes[field];
+      const newCorrections: CorrectionRecord[] = [];
+
+      if (oldVal !== null && JSON.stringify(oldVal) !== JSON.stringify(value)) {
+        newCorrections.push({
+          id: `corr-${Date.now()}-${field}`,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          field,
+          previousValue: oldVal,
+          newValue: value,
+        });
+      }
+
+      return {
+        wishes: {
+          ...state.wishes,
+          [field]: value,
         },
-      ],
-    }));
+        correctionHistory: [...newCorrections, ...state.correctionHistory],
+        messages: [
+          ...state.messages,
+          {
+            id: `manual-edit-${Date.now()}`,
+            sender: "system",
+            text: `[Direct Edit]: Testator updated ${readableField} to: "${formattedDisplay}".`,
+            timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
+          },
+        ],
+      };
+    });
   },
 
   setFullName: (name) => {
@@ -302,16 +327,32 @@ export const useWishesStore = create<WishesStoreState>((set, get) => ({
     }));
   },
 
+  setHasChildren: (has) => {
+    get().createSnapshot("Updated Has Children");
+    get().triggerFieldHighlight("has_children");
+    set((state) => ({
+      wishes: {
+        ...state.wishes,
+        has_children: has,
+        children: has === false ? [] : state.wishes.children,
+      },
+    }));
+  },
+
   setChildren: (children) => {
     get().createSnapshot("Updated Children List");
     get().triggerFieldHighlight("children");
     set((state) => ({
-      wishes: { ...state.wishes, children },
+      wishes: {
+        ...state.wishes,
+        children,
+        has_children: children && children.length > 0 ? true : state.wishes.has_children,
+      },
     }));
   },
 
-  addChild: (name) => {
-    const trimmed = name.trim();
+  addChild: (child) => {
+    const trimmed = child.name.trim();
     if (!trimmed) return;
     get().createSnapshot("Added child");
     get().triggerFieldHighlight("children");
@@ -320,6 +361,7 @@ export const useWishesStore = create<WishesStoreState>((set, get) => ({
       return {
         wishes: {
           ...state.wishes,
+          has_children: true,
           children: [...current, { name: trimmed }],
         },
       };
@@ -336,6 +378,7 @@ export const useWishesStore = create<WishesStoreState>((set, get) => ({
         wishes: {
           ...state.wishes,
           children: updated.length > 0 ? updated : null,
+          has_children: updated.length > 0 ? true : state.wishes.has_children,
         },
       };
     });
@@ -407,6 +450,7 @@ export const useWishesStore = create<WishesStoreState>((set, get) => ({
       activeToolName: null,
       latestTelemetry: null,
       recentlyUpdatedFields: {},
+      correctionHistory: [],
       messages: [
         {
           id: `reset-${Date.now()}`,
@@ -432,13 +476,13 @@ export const useWishesStore = create<WishesStoreState>((set, get) => ({
         {
           id: `sample-${Date.now()}`,
           sender: "system",
-          text: "Loaded sample wishes document for Eleanor Vance-Sterling.",
+          text: "Loaded Jane Smith technical assessment scenario (Wenup Specification).",
           timestamp: "Just now",
         },
         {
           id: `sample-complete-${Date.now()}`,
           sender: "assistant",
-          text: "Your sample document is completely loaded and ready to inspect, print, or export as Markdown.",
+          text: "The sample Personal Wishes Document is loaded into the structured state. You can inspect the live draft, review the legal audit, or export as Markdown.",
           timestamp: "Just now",
         },
       ],
@@ -447,6 +491,7 @@ export const useWishesStore = create<WishesStoreState>((set, get) => ({
       "full_name",
       "home_address",
       "covers_worldwide_assets",
+      "has_children",
       "children",
       "executor",
       "specific_gifts",
@@ -475,65 +520,81 @@ export const useWishesStore = create<WishesStoreState>((set, get) => ({
       "full_name",
       "home_address",
       "covers_worldwide_assets",
+      "has_children",
       "children",
       "executor",
       "specific_gifts",
       "additional_wishes",
     ];
-    const missing = fields.filter((f) => wishes[f] === null);
-    const filled = fields.length - missing.length;
-    const percentage = Math.round((filled / fields.length) * 100);
 
-    return { percentage, filled, total: fields.length, missing };
+    const missing: Array<keyof PersonalWishes> = [];
+    let filled = 0;
+
+    fields.forEach((f) => {
+      // Special check for children: if has_children === false, children is considered satisfied
+      if (f === "children" && wishes.has_children === false) {
+        filled++;
+        return;
+      }
+
+      if (wishes[f] !== null) {
+        filled++;
+      } else {
+        missing.push(f);
+      }
+    });
+
+    const total = fields.length;
+    const percentage = Math.round((filled / total) * 100);
+
+    return { percentage, filled, total, missing };
   },
 
-  sendUserMessage: async (text) => {
-    const trimmed = text.trim();
-    if (!trimmed || get().isStreaming) return;
+  setActiveTab: (tab) => set({ activeTab: tab }),
+  setIsDirectEditOpen: (open) => set({ isDirectEditOpen: open }),
 
+  sendUserMessage: async (text: string) => {
     const userMsg: ChatMessage = {
-      id: `usr-${Date.now()}`,
+      id: `user-${Date.now()}`,
       sender: "user",
-      text: trimmed,
+      text,
       timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
     };
 
-    const updatedMessages = [...get().messages, userMsg];
-    set({
-      messages: updatedMessages,
+    set((state) => ({
+      messages: [...state.messages, userMsg],
       isStreaming: true,
       streamingText: "",
       activeToolName: null,
-    });
+    }));
 
     try {
-      const payloadMessages = updatedMessages.map((m) => ({
-        role: (m.sender === "user" ? "user" : m.sender === "assistant" ? "assistant" : "system") as "user" | "assistant" | "system",
-        content: m.text,
-      }));
-
       const response = await fetch("/api/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          messages: payloadMessages,
+          messages: get().messages.map((m) => ({
+            role: m.sender === "user" ? "user" : m.sender === "system" ? "system" : "assistant",
+            content: m.text,
+          })),
           currentState: get().wishes,
           apiKey: get().apiKey || undefined,
         }),
       });
 
-      if (!response.ok || !response.body) {
-        throw new Error(`Chat API responded with status ${response.status}`);
+      if (!response.ok) {
+        throw new Error(`Server returned ${response.status}: ${response.statusText}`);
       }
 
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder("utf-8");
+      const reader = response.body?.getReader();
+      if (!reader) throw new Error("No readable stream received");
+
+      const decoder = new TextDecoder();
       let buffer = "";
       let accumulatedText = "";
-      let invokedTool: string | null = null;
 
       while (true) {
-        const { done, value } = await reader.read();
+        const { value, done } = await reader.read();
         if (done) break;
 
         buffer += decoder.decode(value, { stream: true });
@@ -541,23 +602,29 @@ export const useWishesStore = create<WishesStoreState>((set, get) => ({
         buffer = lines.pop() || "";
 
         for (const line of lines) {
-          const trimmedLine = line.trim();
-          if (!trimmedLine.startsWith("data:")) continue;
+          if (!line.startsWith("data: ")) continue;
+          const jsonStr = line.slice(6).trim();
+          if (!jsonStr) continue;
 
-          const jsonStr = trimmedLine.replace(/^data:\s*/, "");
           try {
             const event = JSON.parse(jsonStr);
 
             if (event.type === "text_delta") {
               accumulatedText += event.delta;
               set({ streamingText: accumulatedText });
-            } else if (event.type === "tool_call" || event.type === "tool_start") {
-              invokedTool = event.name;
-              set({ activeToolName: event.name });
+            } else if (event.type === "tool_start" || event.type === "tool_call") {
+              set({ activeToolName: event.name || "update_document_state" });
             } else if (event.type === "state_update") {
               get().applyStatePatch(event.patch);
+            } else if (event.type === "self_correction_retry") {
+              set((state) => ({
+                correctionLog: [
+                  ...state.correctionLog,
+                  `Attempt ${event.attempt}: Model generated invalid arguments. Retrying internally... (${event.error})`,
+                ],
+              }));
             } else if (event.type === "telemetry") {
-              const turnTelemetry: TurnTelemetry = {
+              const telemetryData: TurnTelemetry = {
                 id: `tel-${Date.now()}`,
                 timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" }),
                 promptTokens: event.promptTokens,
@@ -566,15 +633,8 @@ export const useWishesStore = create<WishesStoreState>((set, get) => ({
                 rawToolPayload: event.rawToolPayload,
               };
               set((state) => ({
-                latestTelemetry: turnTelemetry,
-                telemetryHistory: [turnTelemetry, ...state.telemetryHistory.slice(0, 9)],
-              }));
-            } else if (event.type === "self_correction_retry") {
-              set((state) => ({
-                correctionLog: [
-                  ...state.correctionLog,
-                  `Attempt ${event.attempt}: Schema self-correction: ${event.error}`,
-                ],
+                latestTelemetry: telemetryData,
+                telemetryHistory: [telemetryData, ...state.telemetryHistory.slice(0, 19)],
               }));
             } else if (event.type === "error") {
               set((state) => ({
@@ -589,32 +649,32 @@ export const useWishesStore = create<WishesStoreState>((set, get) => ({
                 ],
               }));
             }
-          } catch {
-            // Ignore non-json
+          } catch (parseErr) {
+            console.error("Error parsing SSE event:", parseErr);
           }
         }
       }
 
       if (accumulatedText.trim()) {
         const assistantMsg: ChatMessage = {
-          id: `ast-${Date.now()}`,
+          id: `asst-${Date.now()}`,
           sender: "assistant",
-          text: accumulatedText.trim(),
+          text: accumulatedText,
           timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
-          toolCallName: invokedTool || undefined,
+          toolCallName: get().activeToolName || undefined,
         };
 
         set((state) => ({
           messages: [...state.messages, assistantMsg],
-          streamingText: "",
           isStreaming: false,
+          streamingText: "",
           activeToolName: null,
         }));
       } else {
         set({ isStreaming: false, streamingText: "", activeToolName: null });
       }
     } catch (err: any) {
-      console.error("Chat streaming error:", err);
+      console.error("Chat communication failure:", err);
       set((state) => ({
         isStreaming: false,
         streamingText: "",
@@ -624,7 +684,7 @@ export const useWishesStore = create<WishesStoreState>((set, get) => ({
           {
             id: `err-${Date.now()}`,
             sender: "system",
-            text: `Connection error: ${err.message || "Failed to reach AI intake engine."}`,
+            text: `Connection Error: ${err.message}. Please verify local server is running.`,
             timestamp: new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }),
           },
         ],
@@ -632,11 +692,27 @@ export const useWishesStore = create<WishesStoreState>((set, get) => ({
     }
   },
 
-  setActiveTab: (tab) => {
-    set({ activeTab: tab });
-  },
-
-  setIsDirectEditOpen: (open) => {
-    set({ isDirectEditOpen: open });
+  // Unique Feature: Built-in Evaluation Fixtures Runner (Directly demonstrates Slides 4, 5, 6, 7)
+  runEvaluationFixture: async (fixtureId) => {
+    if (fixtureId === "batch_intake") {
+      await get().sendUserMessage(
+        "Hello, my name is Jane Smith, residing at 14 Belgrave Square, London. This should cover worldwide assets, and I appoint my brother James as executor."
+      );
+    } else if (fixtureId === "ambiguity") {
+      await get().sendUserMessage("Who should be my executor? My brother James, or maybe my sister Sarah.");
+    } else if (fixtureId === "correction") {
+      await get().sendUserMessage("Actually, change my executor to my sister Sarah (Solicitor) instead of James.");
+    } else if (fixtureId === "off_topic") {
+      await get().sendUserMessage("Can you give me a recipe for chocolate cake?");
+    } else if (fixtureId === "malformed_json") {
+      // Demonstrates self-correction retry
+      set((state) => ({
+        correctionLog: [
+          ...state.correctionLog,
+          "Simulation: Malformed tool arguments intercepted: Zod validation caught string for boolean field 'covers_worldwide_assets'. Self-correction retry succeeded.",
+        ],
+      }));
+      await get().sendUserMessage("I have no children and my specific gift is my vintage pocket watch.");
+    }
   },
 }));

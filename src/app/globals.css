@@ -1,57 +1,99 @@
 @import "tailwindcss";
 
 :root {
-  --background: #fafafa;
-  --foreground: #09090b;
+  /* Bespoke Architectural Legal-Tech Design Tokens */
+  --surface-canvas: #f6f6f8;
+  --surface-base: #fbfbfc;
+  --surface-card: #ffffff;
+  --surface-subtle: #f0f0f3;
+  --surface-border: #e3e4e8;
+  --surface-border-subtle: #eeeff2;
+
+  --ink-primary: #121316;
+  --ink-secondary: #4b4e57;
+  --ink-muted: #747884;
+  --ink-faint: #a0a4b0;
+
+  /* Restrained Institutional Brand: Deep Legal Seal Forest (Non-neon) */
+  --brand-seal: #1b4332;
+  --brand-seal-hover: #143326;
+  --brand-seal-tint: #edf3ef;
+  --brand-seal-border: #b8d4c5;
 }
 
 @theme inline {
-  --color-background: var(--background);
-  --color-foreground: var(--foreground);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
-}
+  --color-surface-canvas: var(--surface-canvas);
+  --color-surface-base: var(--surface-base);
+  --color-surface-card: var(--surface-card);
+  --color-surface-subtle: var(--surface-subtle);
+  --color-surface-border: var(--surface-border);
+  --color-ink-primary: var(--ink-primary);
+  --color-ink-secondary: var(--ink-secondary);
+  --color-ink-muted: var(--ink-muted);
+  --color-brand-seal: var(--brand-seal);
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #09090b;
-    --foreground: #f4f4f5;
-  }
+  --font-sans: var(--font-jakarta), -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: var(--font-newsreader), Georgia, Cambria, "Times New Roman", Times, serif;
 }
 
 body {
-  background: var(--background);
-  color: var(--foreground);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  background-color: var(--surface-canvas);
+  color: var(--ink-primary);
+  font-family: var(--font-sans);
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
 }
 
-/* Subtle, refined legal document visual diff highlight */
-@keyframes subtleDiffGlow {
+/* Legal instrument editorial typography */
+.font-legal-instrument {
+  font-family: var(--font-serif);
+}
+
+/* Subtle, dignified legal state diff highlight (No neon, gentle forest seal wash) */
+@keyframes dignifiedDiffPulse {
   0% {
-    background-color: rgba(16, 185, 129, 0.14);
-    box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.4);
+    background-color: rgba(27, 67, 50, 0.12);
+    border-color: rgba(27, 67, 50, 0.45);
   }
-  60% {
-    background-color: rgba(16, 185, 129, 0.06);
-    box-shadow: 0 0 0 1px rgba(16, 185, 129, 0.2);
+  70% {
+    background-color: rgba(27, 67, 50, 0.04);
+    border-color: rgba(27, 67, 50, 0.2);
   }
   100% {
     background-color: transparent;
-    box-shadow: none;
+    border-color: inherit;
   }
 }
 
 .highlight-updated {
-  animation: subtleDiffGlow 2s ease-out forwards;
-  border-radius: 0.5rem;
+  animation: dignifiedDiffPulse 1.8s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Skeleton Loading Shimmer Animation */
+@keyframes legalSkeletonWave {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.legal-skeleton-shimmer {
+  background: linear-gradient(
+    90deg,
+    rgba(227, 228, 232, 0.6) 25%,
+    rgba(240, 240, 243, 0.9) 50%,
+    rgba(227, 228, 232, 0.6) 75%
+  );
+  background-size: 200% 100%;
+  animation: legalSkeletonWave 1.8s infinite ease-in-out;
 }
 
 /* Print-optimized stylesheet for 1-click legal PDF / Paper document generation */
 @media print {
-  /* Hide non-document interface elements */
   header,
+  footer,
   section[aria-label="Chat Interface"],
   .no-print,
   button,
@@ -60,10 +102,9 @@ body {
     display: none !important;
   }
 
-  /* Expand the preview pane to full printable width */
   html, body {
     background: #ffffff !important;
-    color: #000000 !important;
+    color: #121316 !important;
     height: auto !important;
     overflow: visible !important;
     font-size: 11pt !important;
@@ -91,7 +132,6 @@ body {
     max-width: 100% !important;
   }
 
-  /* Page breaks */
   .page-break-before {
     page-break-before: always;
   }
