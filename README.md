@@ -1,6 +1,6 @@
 # Document Intake Assistant
 
-A web application built for the **Wenup LLM Engineering Technical Assessment**. It runs a guided conversational interview, stores the answers as validated structured state, and deterministically generates a draft **Personal Wishes Document** (a fictional estate-planning document) as a PDF and Markdown file.
+A web application built for the **Wenup LLM Engineering Technical Assessment**. It runs a guided conversational interview (typed or dictated), stores the answers as validated structured state, and deterministically generates a draft **Personal Wishes Document** (a fictional estate-planning document) as a PDF and Markdown file.
 
 > **FICTIONAL DOCUMENT - NOT LEGAL ADVICE.** All output is for assessment purposes only and is not a will or a legal instrument.
 
@@ -13,17 +13,15 @@ A web application built for the **Wenup LLM Engineering Technical Assessment**. 
 3. [Architecture](#architecture)
 4. [Features](#features)
 5. [Notable Implementation Details](#notable-implementation-details)
-6. [Data Model](#data-model)
-7. [Question Planner](#question-planner)
-8. [Validation Pipeline](#validation-pipeline)
-9. [Tech Stack](#tech-stack)
-10. [LLM Provider Configuration](#llm-provider-configuration)
-11. [Testing and Evaluation](#testing-and-evaluation)
-12. [Reviewer Walkthrough](#reviewer-walkthrough)
-13. [Repository Structure](#repository-structure)
-14. [Documentation](#documentation)
-15. [Limitations](#limitations)
-16. [Disclaimer](#disclaimer)
+6. [Voice Input](#voice-input)
+7. [Data Model](#data-model)
+8. [Question Planner](#question-planner)
+9. [Validation Pipeline](#validation-pipeline)
+10. [Tech Stack](#tech-stack)
+11. [LLM Provider Configuration](#llm-provider-configuration)
+12. [Testing and Evaluation](#testing-and-evaluation)
+13. [Reviewer Walkthrough](#reviewer-walkthrough)
+14. [Repository Structure](#repository-structure)
 
 ---
 
@@ -34,6 +32,7 @@ A web application built for the **Wenup LLM Engineering Technical Assessment**. 
 - Node.js 20 or later
 - Git
 - Docker (optional)
+- A Chromium-based browser (Chrome, Edge) or Safari for built-in voice input (optional)
 
 ### Local
 
@@ -68,13 +67,14 @@ npm start
 3. **LLM output is untrusted.** Every extraction passes through schema, conflict, and business-rule validation before it is committed.
 4. **Nothing changes silently.** Every change creates a new state version with an audit record. Contradictions of confirmed data require user confirmation.
 5. **Document generation is deterministic.** The same state always produces the same document. No LLM call is made during generation.
+6. **Voice is an input method, not a shortcut.** Dictated text is treated exactly like typed text and goes through the same validation pipeline. It is never sent automatically.
 
 ---
 
 ## Architecture
 
 ```
-User input (text)
+User input (typed text, or dictated speech -> editable transcript)
       |
       v
 Extraction layer  (OpenAI / Gemini / built-in simulation engine)
@@ -104,13 +104,14 @@ Deterministic generation: PDF and Markdown (no LLM)
 ## Features
 
 - **Multi-turn guided intake** with suggestion chips.
+- **Voice input** with live interim text, a review-and-edit step before sending, and a server transcription fallback.
 - **Multi-field extraction** in a single message (e.g. name, address, and children status together).
 - **Deterministic question planner** with conditional skipping (children's names are skipped when `has_children` is false).
 - **Field status tracking:** `UNKNOWN`, `PROPOSED`, `CONFIRMED`, `CORRECTED`, each with a confidence value.
 - **Ambiguity handling:** hedged input ("I think Sarah...") is stored as `PROPOSED` and the assistant asks for confirmation.
 - **Contradiction handling:** a contradiction of a confirmed field pauses the update and shows a resolution card.
 - **Versioned state:** every committed change creates an immutable snapshot (v1, v2, ...).
-- **Audit trail:** field, previous value, new value, timestamp, and source (chat, manual edit, conflict resolution).
+- **Audit trail:** field, previous value, new value, timestamp, and source (chat, voice, manual edit, conflict resolution).
 - **Inline manual editing** in the state panel, routed through the same validation pipeline.
 - **Zod self-correction loop:** invalid model JSON is returned to the model with the exact validation error paths and retried (up to 2 times).
 - **Off-topic deflection** that steers back to the interview.
@@ -119,7 +120,7 @@ Deterministic generation: PDF and Markdown (no LLM)
 - **Telemetry panel:** latency, token counts, model ID, confidence, and retry count per request.
 - **Works without an API key** using the built-in simulation engine.
 - **Standalone evaluation harness** with JSON fixtures.
-- **PII-masking logger** so names and addresses do not appear in logs.
+- **PII-masking logger** so names, addresses, and transcripts do not appear in logs.
 
 ---
 
@@ -133,6 +134,45 @@ Deterministic generation: PDF and Markdown (no LLM)
 | Telemetry panel | Per-request latency, token counts, model ID, confidence, and retry count | Telemetry drawer |
 | No-key mode | The simulation engine follows the same planner and validation pipeline as the real providers | Run with no `.env` |
 | Typed end to end | One Zod schema is shared by the API route, store, UI, and tests | `src/lib/schema.ts` |
+| Voice provider abstraction | Web Speech API is preferred; a server transcription route is used only when the browser lacks support and a key is configured | `src/lib/voice/` |
+
+---
+
+## Voice Input
+
+Users can dictate answers instead of typing.
+
+### Behaviour
+
+- The microphone button toggles recording and shows a recording state (indicator, "Listening...", elapsed time).
+- Interim text appears in the input box while the user speaks.
+- When speech ends, the final text is placed in the input box for review. **It is not sent automatically**, so misheard names and addresses can be corrected first.
+- Dictated messages go through the same extraction and validation pipeline as typed messages.
+- Messages are tagged `inputMode: "voice"`, and the tag is recorded in the audit trail.
+- Names and addresses from voice have a capped confidence (`VOICE_CONFIDENCE_CAP`) and are stored as `PROPOSED` until the user confirms them.
+
+### Providers
+
+| Provider | Used when | Notes |
+| --- | --- | --- |
+| Web Speech API | Browser supports `SpeechRecognition` | No API key needed; works in no-key mode |
+| Server transcription (`/api/transcribe`) | Browser lacks Web Speech and `OPENAI_API_KEY` is set | Audio limited to 5 MB and 60 seconds; MIME type validated |
+| None | Neither is available | The microphone button is hidden; typing still works |
+
+### Browser support
+
+Web Speech is available in Chromium-based browsers and partially in Safari. Firefox does not support it, so Firefox uses the server fallback if a key is configured, otherwise the button is hidden.
+
+### Privacy
+
+- Audio is not stored.
+- Transcripts and audio are not written to logs.
+- With the Web Speech API, audio is processed by the browser's speech service. With the server fallback, audio is sent to the configured transcription provider.
+- A one-line notice is shown the first time the microphone is used.
+
+### Accessibility
+
+The microphone button has an `aria-label` and `aria-pressed`, a keyboard shortcut (`Ctrl+Shift+M`), and a live-region announcement when recording starts and stops.
 
 ---
 
@@ -198,6 +238,7 @@ State is committed only after all three stages pass or the user resolves a confl
 | Styling | Tailwind CSS |
 | PDF | <pdf-lib or pdfkit - fill in> |
 | LLM | OpenAI / Gemini (optional), built-in simulation engine |
+| Voice | Web Speech API, optional OpenAI transcription fallback |
 | Testing | Node test runner |
 | Containers | Docker, Docker Compose |
 
@@ -205,12 +246,12 @@ State is committed only after all three stages pass or the user resolves a confl
 
 ## LLM Provider Configuration
 
-With no keys set, the app uses the simulation engine. The simulation engine follows the same planner and validation pipeline as the real providers.
+With no keys set, the app uses the simulation engine. The simulation engine follows the same planner and validation pipeline as the real providers. Voice input works in this mode through the Web Speech API.
 
 To use a real model, create `.env.local`:
 
 ```bash
-# OpenAI
+# OpenAI (also enables the server transcription fallback)
 OPENAI_API_KEY=sk-...
 OPENAI_MODEL=gpt-4o-mini
 
@@ -237,7 +278,7 @@ Restart the dev server after changing environment variables.
 npm test
 ```
 
-Coverage areas: question planner order and conditional skipping, field status transitions, schema validation, conflict detection, state versioning and immutability, PDF generation, and review-page gating.
+Coverage areas: question planner order and conditional skipping, field status transitions, schema validation, conflict detection, state versioning and immutability, PDF generation, review-page gating, voice provider selection, the Web Speech provider (mocked), the `/api/transcribe` route (size, type, and logging checks), and voice messages passing through validation.
 
 Current result: `<N>/<N> passing` (update from real output).
 
@@ -247,7 +288,7 @@ Current result: `<N>/<N> passing` (update from real output).
 npm run eval
 ```
 
-Runs `<N>` fixtures from `evaluation/cases/*.json` across five categories:
+Runs `<N>` fixtures from `evaluation/cases/*.json` across five categories, plus voice-style input:
 
 | Category | What it checks |
 | --- | --- |
@@ -256,6 +297,7 @@ Runs `<N>` fixtures from `evaluation/cases/*.json` across five categories:
 | Ambiguity | Hedged language produces `PROPOSED`, not `CONFIRMED` |
 | Contradiction | Conflicts with confirmed state do not overwrite it |
 | Malformed payload | Invalid JSON, wrong types, and unknown paths are rejected |
+| Voice-style input | Disfluent dictated text ("um... sorry, 25 High Street") is extracted correctly |
 
 Current result: `<N>/<N> passing` (update from real output).
 
@@ -275,8 +317,9 @@ Run the app and follow these steps:
 6. Send: `My brother James.` Executor name and relationship are both captured.
 7. Send: `I think Sarah should be my executor.` The field is stored as `PROPOSED` and the assistant asks for confirmation.
 8. Send: `Actually, make David my executor.` A conflict card appears. Choose **Use David**. The audit trail records the change.
-9. Use the pencil icon on **Home address** to edit it manually. A new version is created and the preview updates.
-10. Open **Review & Finalize**, tick the confirmation box, generate the document, and download the PDF.
+9. Click the microphone and say: `The executor's relationship is friend.` Check the transcript in the input box, edit it if needed, then send. The audit trail shows the source as voice.
+10. Use the pencil icon on **Home address** to edit it manually. A new version is created and the preview updates.
+11. Open **Review & Finalize**, tick the confirmation box, generate the document, and download the PDF.
 
 ---
 
@@ -286,13 +329,17 @@ Run the app and follow these steps:
 .
 |-- src/
 |   |-- app/                 # Pages and API routes
-|   |-- components/          # Chat, state panel, conflict card, preview, review
+|   |   `-- api/
+|   |       |-- chat/        # Extraction and streaming
+|   |       `-- transcribe/  # Server transcription fallback
+|   |-- components/          # Chat, voice button, state panel, conflict card, preview, review
 |   |-- lib/
 |   |   |-- schema.ts
 |   |   |-- questionPlanner.ts
 |   |   |-- validation/      # schema, conflict, business-rule modules
 |   |   |-- state/           # versioned store and audit records
 |   |   |-- llm/             # providers and simulation engine
+|   |   |-- voice/           # speech providers and provider selection
 |   |   `-- documents/       # PDF and Markdown generation
 |   `-- tests/
 |-- evaluation/
@@ -308,29 +355,3 @@ Run the app and follow these steps:
 |-- docker-compose.yml
 `-- README.md
 ```
-
-Adjust paths to match the actual repository.
-
----
-
-## Documentation
-
-- [`docs/AI_LOG.md`](docs/AI_LOG.md): AI tools used, key prompts, and corrections made to AI output.
-- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): data flow, state model, validation pipeline, and versioning.
-- [`docs/PRODUCTION_NOTES.md`](docs/PRODUCTION_NOTES.md): what would be needed for production (authentication, PII encryption at rest, rate limiting, persistent storage, observability, cost controls).
-
----
-
-## Limitations
-
-- State is held in memory on the client and server; there is no database persistence.
-- No authentication or multi-user support.
-- The simulation engine uses heuristics and does not match the coverage of a real model.
-- English only.
-- Jurisdiction handling is limited to a worldwide versus UK-only flag.
-
----
-
-## Disclaimer
-
-This software was built solely as a technical assessment. All generated documents are fictional and are not legal advice, a will, or a valid legal instrument.
