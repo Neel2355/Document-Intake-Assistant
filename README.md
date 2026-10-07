@@ -1,20 +1,41 @@
-# Document Intake Assistant — Wenup LLM Engineering Technical Assessment
+# Document Intake Assistant
 
-> **Conversational AI that turns natural language into structured legal documents — in real time.**
+A web application built for the **Wenup LLM Engineering Technical Assessment**. It runs a guided conversational interview, stores the answers as validated structured state, and deterministically generates a draft **Personal Wishes Document** (a fictional estate-planning document) as a PDF and Markdown file.
 
-![Next.js](https://img.shields.io/badge/Next.js_16-black?style=for-the-badge&logo=nextdotjs)
-![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?style=for-the-badge&logo=typescript&logoColor=white)
-![Zod](https://img.shields.io/badge/Zod-3E67B1?style=for-the-badge&logo=zod&logoColor=white)
-![Zustand](https://img.shields.io/badge/Zustand-orange?style=for-the-badge)
-![Tests](https://img.shields.io/badge/Tests-11%2F11_passing-brightgreen?style=for-the-badge)
-![Build](https://img.shields.io/badge/Build-passing-brightgreen?style=for-the-badge)
-![License](https://img.shields.io/badge/License-MIT-blue?style=for-the-badge)
+> **FICTIONAL DOCUMENT - NOT LEGAL ADVICE.** All output is for assessment purposes only and is not a will or a legal instrument.
 
-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------
+---
+
+## Table of Contents
+
+1. [Installation](#installation)
+2. [Design Principles](#design-principles)
+3. [Architecture](#architecture)
+4. [Features](#features)
+5. [Notable Implementation Details](#notable-implementation-details)
+6. [Data Model](#data-model)
+7. [Question Planner](#question-planner)
+8. [Validation Pipeline](#validation-pipeline)
+9. [Tech Stack](#tech-stack)
+10. [LLM Provider Configuration](#llm-provider-configuration)
+11. [Testing and Evaluation](#testing-and-evaluation)
+12. [Reviewer Walkthrough](#reviewer-walkthrough)
+13. [Repository Structure](#repository-structure)
+14. [Documentation](#documentation)
+15. [Limitations](#limitations)
+16. [Disclaimer](#disclaimer)
+
+---
 
 ## Installation
 
-**Requirements:** Node.js 22.6+, npm
+### Prerequisites
+
+- Node.js 20 or later
+- Git
+- Docker (optional)
+
+### Local
 
 ```bash
 git clone https://github.com/Neel2355/Document-Intake-Assistant
@@ -23,179 +44,293 @@ npm install
 npm run dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000). No `.env` is needed; the built-in simulation engine runs without an API key.
+Open `http://localhost:3000`. No `.env` file is required.
 
-**Optional:** to use a real LLM, add one key to `.env.local` and restart:
-
-```env
-OPENAI_API_KEY=your_key
-# or GEMINI_API_KEY=your_key
-```
-
-**Tests:**
+### Docker
 
 ```bash
-node --experimental-strip-types --test src/tests/intake.test.ts
+docker-compose up --build
 ```
 
-## What This Is
+### Production build
 
-A full-stack LLM intake assistant that conducts a natural-language conversation with a user and progressively builds a structured **Personal Wishes Document** — the kind used in estate planning. Every field extracted from the conversation is validated with a Zod schema, streamed live to a document preview pane, and fully auditable.
-
-Built as a submission for the **Wenup Engineering Technical Assessment**, this implementation goes well beyond the brief — introducing production-grade architecture patterns, unique evaluation tooling, and a compliance-aware UI layer that most candidates skip entirely.
+```bash
+npm run build
+npm start
+```
 
 ---
 
-## What Makes This Different
+## Design Principles
 
-### 🔁 Zod Self-Correction Loop
-When the LLM returns malformed or schema-invalid JSON, the system doesn't crash — it feeds the exact Zod validation error paths back to the model as a structured correction prompt and retries automatically (up to 2×). This mirrors how production LLM pipelines handle model unreliability.
-
-### 🧪 Built-in Evaluation Fixture Runner
-A dedicated **"Test Fixtures" tab** lets you fire 5 pre-wired evaluation scenarios in one click:
-- Batch multi-field intake in a single turn
-- Ambiguity & contradiction detection
-- Field correction and overwrite tracking
-- Malformed JSON self-correction simulation
-- Off-topic deflection guardrails
-
-No external test harness needed — the evaluation suite is embedded in the UI itself.
-
-### 📋 Correction Audit Trail
-Every time a user corrects a previously stated fact ("actually, change my executor to…"), the system records a **field-level diff** — previous value vs. new value, with a timestamp. This is surfaced live in the Fixtures tab as a structured audit log. Most implementations simply overwrite state silently.
-
-### 🧠 Context-Aware Simulation Engine
-Works **without any paid API key**. The built-in simulation engine is context-aware: it detects what fields are still missing, generates appropriately targeted follow-up questions, handles corrections, detects ambiguity, and deflects off-topic input — all deterministically.
-
-### ⚖️ Institutional-Grade Compliance Layer
-- **Legal Health Checker** with real statutory citations (Wills Act 1837, Administration of Estates Act 1925)
-- **Terms of Service & Privacy Policy modals** with full legal text
-- **Fictional Document Notice** prominently rendered in every export
-- **Legal Footer** with trust indicators and compliance links
-- **Print-optimised** markdown export with proper heading hierarchy
-
-### 📊 Structured Telemetry
-Every API response emits a telemetry event with latency, token counts, model ID, extraction confidence, and retry count — visible in a live structured inspector panel (not a fake terminal).
-
-### 📐 Typed End-to-End
-- Zod schema is the **single source of truth** for the document shape — shared between the API route, the store, the UI, and the test suite
-- 11 automated tests covering schema integrity, multi-field extraction, self-correction, field overwrite, and markdown disclaimer compliance — run via Node's native test runner with **zero extra test dependencies**
+1. **The LLM extracts; it does not decide.** The model turns user text into candidate field values. It does not choose the next question, mutate state, or write the document.
+2. **Structured state is the source of truth.** Chat history is evidence only. The document is rendered from validated state, never from the transcript.
+3. **LLM output is untrusted.** Every extraction passes through schema, conflict, and business-rule validation before it is committed.
+4. **Nothing changes silently.** Every change creates a new state version with an audit record. Contradictions of confirmed data require user confirmation.
+5. **Document generation is deterministic.** The same state always produces the same document. No LLM call is made during generation.
 
 ---
 
 ## Architecture
 
 ```
-User Input → ChatPane.sendUserMessage()
-  → POST /api/chat (last 5 messages + full currentState JSON)
-  → buildMasterSystemPrompt(currentState)
-  → [No key] runSimulatedEngine()   ← context-aware deterministic fallback
-  → [API key] OpenAI/Gemini streaming + MAX_RETRIES=2 Zod self-correction
-  → SSE stream: text_delta | tool_call | state_update | telemetry | done
-  → useWishesStore.applyStatePatch()
-      → triggerFieldHighlight()     ← subtle glow animation on changed fields
-      → CorrectionRecord stored     ← field-level audit trail
-→ LivePreviewPane re-renders (real-time)
-→ TelemetryDrawer shows structured metrics
-→ EvaluationFixtures tab shows correction audit trail
+User input (text)
+      |
+      v
+Extraction layer  (OpenAI / Gemini / built-in simulation engine)
+      |  candidate fields + confidence + ambiguity flags
+      v
+Validation pipeline
+  1. Schema validator          (Zod)
+  2. Conflict detector         (vs. CONFIRMED fields)
+  3. Business-rule validator   (required / conditional fields)
+      |
+      +-- no conflict --> State manager: commit new version (vN), write audit record
+      |
+      +-- conflict ----> Conflict card: [Keep existing] / [Use new]
+      |
+      v
+Question planner  (deterministic dependency order)
+      |
+      v
+UI: chat, state panel (inline edit), live preview, review page
+      |
+      v
+Deterministic generation: PDF and Markdown (no LLM)
 ```
+
+---
+
+## Features
+
+- **Multi-turn guided intake** with suggestion chips.
+- **Multi-field extraction** in a single message (e.g. name, address, and children status together).
+- **Deterministic question planner** with conditional skipping (children's names are skipped when `has_children` is false).
+- **Field status tracking:** `UNKNOWN`, `PROPOSED`, `CONFIRMED`, `CORRECTED`, each with a confidence value.
+- **Ambiguity handling:** hedged input ("I think Sarah...") is stored as `PROPOSED` and the assistant asks for confirmation.
+- **Contradiction handling:** a contradiction of a confirmed field pauses the update and shows a resolution card.
+- **Versioned state:** every committed change creates an immutable snapshot (v1, v2, ...).
+- **Audit trail:** field, previous value, new value, timestamp, and source (chat, manual edit, conflict resolution).
+- **Inline manual editing** in the state panel, routed through the same validation pipeline.
+- **Zod self-correction loop:** invalid model JSON is returned to the model with the exact validation error paths and retried (up to 2 times).
+- **Off-topic deflection** that steers back to the interview.
+- **Review and finalize page** with a required-fields checklist and a confirmation checkbox.
+- **PDF export** with header, running "Page X of Y" footer, and a fictional-document disclaimer on every page. **Markdown export** is also available.
+- **Telemetry panel:** latency, token counts, model ID, confidence, and retry count per request.
+- **Works without an API key** using the built-in simulation engine.
+- **Standalone evaluation harness** with JSON fixtures.
+- **PII-masking logger** so names and addresses do not appear in logs.
+
+---
+
+## Notable Implementation Details
+
+| Detail | What it does | Where to verify |
+| --- | --- | --- |
+| Zod self-correction loop | When model output fails schema validation, the exact error paths are sent back to the model and the call is retried (max 2) | `src/lib/llm/` and the "Malformed JSON" fixture |
+| In-app fixture runner | Evaluation scenarios can be run from a UI tab without a separate harness | "Test Fixtures" tab |
+| Streaming state updates | Responses stream over SSE; changed fields are highlighted in the live preview as they update | Chat pane and preview pane |
+| Telemetry panel | Per-request latency, token counts, model ID, confidence, and retry count | Telemetry drawer |
+| No-key mode | The simulation engine follows the same planner and validation pipeline as the real providers | Run with no `.env` |
+| Typed end to end | One Zod schema is shared by the API route, store, UI, and tests | `src/lib/schema.ts` |
+
+---
+
+## Data Model
+
+Each field is stored as `{ value, status, confidence, sourceMessageId }`.
+
+| Field | Type | Required | Notes |
+| --- | --- | --- | --- |
+| `full_name` | string | Yes | Identification |
+| `home_address` | string | Yes | Primary residence |
+| `covers_worldwide_assets` | boolean | Yes | true = worldwide, false = UK only |
+| `has_children` | boolean | Yes | Separate from the children list; controls branching |
+| `children` | list of `{ name }` | Conditional | Required only if `has_children` is true |
+| `executor.name` | string | Yes | Estate administrator |
+| `executor.relationship` | string | Yes | Relationship to the user |
+| `specific_gifts` | list of strings | No | Optional bequests |
+| `additional_wishes` | string | No | Funeral and personal wishes |
+
+The Zod schema in `src/lib/schema.ts` is the single source of truth, shared by the API route, state store, UI, and tests.
+
+---
+
+## Question Planner
+
+The next question is chosen by a pure function (`src/lib/questionPlanner.ts`), not by the LLM:
+
+1. Full name
+2. Home address
+3. Asset scope
+4. Has children
+5. Children's names (only if `has_children` is true)
+6. Executor name and relationship
+7. Specific gifts (optional)
+8. Additional wishes (optional)
+
+A message that answers several fields advances the planner past all of them.
+
+---
+
+## Validation Pipeline
+
+Located in `src/lib/validation/`. Each stage is a separate module.
+
+| Stage | Responsibility |
+| --- | --- |
+| `schemaValidator` | Type and shape checks; rejects unknown field paths and malformed payloads |
+| `conflictDetector` | Detects contradictions with `CONFIRMED` fields; distinguishes explicit corrections from conflicts |
+| `businessRuleValidator` | Enforces conditional and required-field rules |
+
+State is committed only after all three stages pass or the user resolves a conflict.
 
 ---
 
 ## Tech Stack
 
-| Layer | Choice | Why |
-|---|---|---|
-| Framework | Next.js 16 App Router | SSE streaming, API routes, RSC |
-| Language | TypeScript (strict) | End-to-end type safety |
-| Schema & Validation | Zod | Runtime validation + self-correction feedback |
-| State | Zustand | Correction history, telemetry, readiness tracking |
-| Styling | Tailwind CSS + CSS custom properties | Institutional design tokens |
-| Icons | Bespoke SVG library (30+ icons) | Legal-themed, 1.5px stroke, no external dep |
-| LLM | OpenAI / Gemini (optional) + built-in simulator | Works without an API key |
-| Testing | Node native test runner (`--experimental-strip-types`) | Zero-dep, fast, CI-friendly |
+| Layer | Choice |
+| --- | --- |
+| Framework | Next.js 16 (App Router) |
+| Language | TypeScript (strict) |
+| Validation | Zod |
+| State | Zustand |
+| Styling | Tailwind CSS |
+| PDF | <pdf-lib or pdfkit - fill in> |
+| LLM | OpenAI / Gemini (optional), built-in simulation engine |
+| Testing | Node test runner |
+| Containers | Docker, Docker Compose |
 
 ---
 
-## Schema (Single Source of Truth)
+## LLM Provider Configuration
 
-```typescript
-PersonalWishesSchema = z.object({
-  full_name:               z.string().nullable(),
-  home_address:            z.string().nullable(),
-  covers_worldwide_assets: z.boolean().nullable(),
-  has_children:            z.boolean().nullable(),   // explicit boolean — separate from children[]
-  children:                z.array(z.object({ name: z.string() })).nullable(),
-  executor:                z.object({ name: z.string(), relationship: z.string() }).nullable(),
-  specific_gifts:          z.array(z.string()).nullable(),
-  additional_wishes:       z.string().nullable(),
-})
-```
+With no keys set, the app uses the simulation engine. The simulation engine follows the same planner and validation pipeline as the real providers.
 
----
-
-## Running Locally
+To use a real model, create `.env.local`:
 
 ```bash
-git clone https://github.com/Neel2355/Document-Intake-Assistant
-cd Document-Intake-Assistant
-npm install
-npm run dev         # → http://localhost:3000
+# OpenAI
+OPENAI_API_KEY=sk-...
+OPENAI_MODEL=gpt-4o-mini
+
+# or Gemini
+GEMINI_API_KEY=...
+GEMINI_MODEL=gemini-1.5-flash
 ```
 
-**Run the test suite (zero extra deps):**
+Restart the dev server after changing environment variables.
+
+---
+
+## Testing and Evaluation
+
+### Run everything
+
 ```bash
-node --experimental-strip-types --test src/tests/intake.test.ts
-# ✔ 11/11 passing
+./scripts/run_all_tests.sh
 ```
 
-**Production build:**
+### Unit and integration tests
+
 ```bash
-npm run build
-# ✓ Compiled successfully — zero TypeScript errors
+npm test
 ```
 
-> **No `.env` required.** The built-in simulation engine runs everything locally.  
-> Add `OPENAI_API_KEY` or `GEMINI_API_KEY` to unlock real LLM mode.
+Coverage areas: question planner order and conditional skipping, field status transitions, schema validation, conflict detection, state versioning and immutability, PDF generation, and review-page gating.
+
+Current result: `<N>/<N> passing` (update from real output).
+
+### Evaluation harness
+
+```bash
+npm run eval
+```
+
+Runs `<N>` fixtures from `evaluation/cases/*.json` across five categories:
+
+| Category | What it checks |
+| --- | --- |
+| Normal extraction | Single-field extraction |
+| Multi-field extraction | Several fields in one message |
+| Ambiguity | Hedged language produces `PROPOSED`, not `CONFIRMED` |
+| Contradiction | Conflicts with confirmed state do not overwrite it |
+| Malformed payload | Invalid JSON, wrong types, and unknown paths are rejected |
+
+Current result: `<N>/<N> passing` (update from real output).
+
+The same fixtures are available in the in-app **Test Fixtures** tab.
 
 ---
 
-## Specification Compliance
+## Reviewer Walkthrough
 
-| Wenup Requirement | Status |
-|---|---|
-| Conversational multi-turn intake | ✅ |
-| Structured JSON tool-call extraction | ✅ |
-| Zod schema validation with error paths | ✅ |
-| Multi-field atomic extraction in one turn | ✅ |
-| Field correction / overwrite handling | ✅ |
-| Off-topic deflection | ✅ |
-| Live document preview | ✅ |
-| Markdown export with fictional disclaimer | ✅ |
-| `has_children` boolean (separate from children array) | ✅ |
-| Jane Smith slide 4 scenario preloaded | ✅ |
-| Automated test suite | ✅ |
-| Works without a paid API key | ✅ |
+Run the app and follow these steps:
+
+1. Open the landing page and read the fictional-document notice.
+2. Start the interview.
+3. Send: `My name is Jane Smith and I live at 25 High Street, London.` Both fields are extracted and the version increments.
+4. Choose the **Worldwide assets** chip. Asset scope updates.
+5. Send: `I do not have any children.` The children-names question is skipped and the executor question follows.
+6. Send: `My brother James.` Executor name and relationship are both captured.
+7. Send: `I think Sarah should be my executor.` The field is stored as `PROPOSED` and the assistant asks for confirmation.
+8. Send: `Actually, make David my executor.` A conflict card appears. Choose **Use David**. The audit trail records the change.
+9. Use the pencil icon on **Home address** to edit it manually. A new version is created and the preview updates.
+10. Open **Review & Finalize**, tick the confirmation box, generate the document, and download the PDF.
 
 ---
 
-## Unique Features (Beyond the Brief)
+## Repository Structure
 
-| Feature | Description |
-|---|---|
-| 🔁 Zod Self-Correction | Validation error paths fed back to model for automatic retry |
-| 🧪 Evaluation Fixture Runner | 5 one-click test scenarios embedded in the UI |
-| 📋 Correction Audit Trail | Field-level diff log with timestamps |
-| ⚖️ Legal Health Checker | Statutory citations, jurisdiction warnings |
-| 📊 Telemetry Inspector | Per-request latency, tokens, retries, confidence |
-| 🦴 Legal Skeleton Loader | Legal-document themed shimmer loading state |
-| 🔒 Compliance Modals | Full ToS & Privacy Policy with legal text |
-| 🖨️ Print-Optimised Export | Markdown with `@media print` CSS rules |
-| 🧠 Simulation Engine | Context-aware fallback — no API key needed |
-| 🎨 30+ Custom SVG Icons | Bespoke legal-themed icon library |
+```
+.
+|-- src/
+|   |-- app/                 # Pages and API routes
+|   |-- components/          # Chat, state panel, conflict card, preview, review
+|   |-- lib/
+|   |   |-- schema.ts
+|   |   |-- questionPlanner.ts
+|   |   |-- validation/      # schema, conflict, business-rule modules
+|   |   |-- state/           # versioned store and audit records
+|   |   |-- llm/             # providers and simulation engine
+|   |   `-- documents/       # PDF and Markdown generation
+|   `-- tests/
+|-- evaluation/
+|   |-- cases/               # JSON fixtures
+|   `-- run.ts
+|-- docs/
+|   |-- AI_LOG.md
+|   |-- ARCHITECTURE.md
+|   `-- PRODUCTION_NOTES.md
+|-- scripts/
+|   `-- run_all_tests.sh
+|-- Dockerfile
+|-- docker-compose.yml
+`-- README.md
+```
+
+Adjust paths to match the actual repository.
 
 ---
 
-## License
+## Documentation
 
-MIT — built for the Wenup Engineering Technical Assessment.
+- [`docs/AI_LOG.md`](docs/AI_LOG.md): AI tools used, key prompts, and corrections made to AI output.
+- [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md): data flow, state model, validation pipeline, and versioning.
+- [`docs/PRODUCTION_NOTES.md`](docs/PRODUCTION_NOTES.md): what would be needed for production (authentication, PII encryption at rest, rate limiting, persistent storage, observability, cost controls).
+
+---
+
+## Limitations
+
+- State is held in memory on the client and server; there is no database persistence.
+- No authentication or multi-user support.
+- The simulation engine uses heuristics and does not match the coverage of a real model.
+- English only.
+- Jurisdiction handling is limited to a worldwide versus UK-only flag.
+
+---
+
+## Disclaimer
+
+This software was built solely as a technical assessment. All generated documents are fictional and are not legal advice, a will, or a valid legal instrument.
